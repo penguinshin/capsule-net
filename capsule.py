@@ -34,30 +34,31 @@ class CapsNet(nn.Module):
                     for k in range(0, 6):
                         for l in range(0, 6):
                             u_hat[q,j,k,l,i,:] = self.wij[i][j][k][l](x[q,j,k,l,:])
-        x = u_hat
-        return x
+        
+        return u_hat
         
     def route(self, x, n_iter = 3):
         x = x.view(-1, 10, 1152, 16)
 
-        outputs = Variable(torch.FloatTensor(x.size(0), 10,16))
-        self.bs = []
+        outputs = [Variable(torch.FloatTensor(x.size(0),16)) for i in range(10)]
         for r in range(n_iter):
-            self.bs = (self.bij)
-        
-            cij = [F.softmax(self.bij[i], dim=0) for i in range(len(self.bij))]
+            self.cij = [F.softmax(self.bij[i], dim=0) for i in range(len(self.bij))]
             for i in range(0,10):
-                v = cij[i].matmul(x[:,i])
+                v = self.cij[i].matmul(x[:,i])
                 v = self.squash(v)
-                outputs[:,i] = v
+                outputs[i] = v
                 
                 if r < n_iter-1:
                     for d in range(0, x.size(0)):
                         self.bij[i] = self.bij[i] + torch.matmul(x[d,i,:], v[d])
-        return outputs
+        self.bij = [t.detach() for t in self.bij]             
+        return torch.stack(outputs).view(-1,10,16)
     
     def forward(self, x):
         return self.route(self.prim_to_uhat(self.conv_to_prim(self.conv1(x))))
+
+def debug_loss(input, target):
+    return input.mean()
 
 def margin_loss(input, target, size_average=True):
     """
@@ -72,7 +73,7 @@ def margin_loss(input, target, size_average=True):
     v_c = torch.sqrt((input**2).sum(dim=2, keepdim=True))
 
     # Calculate left and right max() terms.
-    zero = Variable(torch.zeros(1))
+    zero = Variable(torch.zeros(1)).detach()
     m_plus = 0.9
     m_minus = 0.1
     loss_lambda = 0.5
